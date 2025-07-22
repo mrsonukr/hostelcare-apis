@@ -1,0 +1,11 @@
+name = "hostelapis"
+main = "worker.js"
+compatibility_date = "2023-08-23"
+
+[unsafe.metadata.observability]
+enabled = true
+
+[[d1_databases]]
+binding = "hostel"
+database_name = "hostel"
+database_id = "af7d44b4-8bb2-42ed-b462-e4c8604f51b2"
