@@ -58,7 +58,7 @@ export default {
 						JSON.stringify({ 
 							success: true, 
 							message: 'Student registered successfully',
-							student_id: result.meta.last_row_id
+							roll_no: roll_no
 						}),
 						{
 							status: 201,
@@ -102,11 +102,14 @@ export default {
 		if (request.method === 'POST' && url.pathname === '/api/login') {
 			try {
 				const body = await request.json();
-				const { email, password } = body;
+				const { username, password } = body;
 
-				if (!email || !password) {
+				if (!username || !password) {
 					return new Response(
-						JSON.stringify({ error: 'Email and password are required' }),
+						JSON.stringify({ 
+							error: 'Username and password are required',
+							note: 'Username can be roll number, email, or mobile number'
+						}),
 						{
 							status: 400,
 							headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -114,9 +117,9 @@ export default {
 					);
 				}
 
-				// Find user by email
-				const stmt = env.hostel.prepare('SELECT * FROM students WHERE email = ?');
-				const result = await stmt.bind(email).first();
+				// Find user by roll_no, email, or mobile_no
+				const stmt = env.hostel.prepare('SELECT * FROM students WHERE roll_no = ? OR email = ? OR mobile_no = ?');
+				const result = await stmt.bind(username, username, username).first();
 
 				if (!result) {
 					return new Response(
@@ -167,14 +170,17 @@ export default {
 			}
 		}
 
-		// Handle get student profile endpoint
+		// Handle get student profile endpoint by roll number
 		if (request.method === 'GET' && url.pathname.startsWith('/api/student/')) {
 			try {
-				const studentId = url.pathname.split('/').pop();
+				const rollNo = url.pathname.split('/').pop();
 
-				if (!studentId || isNaN(studentId)) {
+				if (!rollNo || rollNo.length !== 8 || isNaN(rollNo)) {
 					return new Response(
-						JSON.stringify({ error: 'Invalid student ID' }),
+						JSON.stringify({ 
+							error: 'Invalid roll number format. Must be exactly 8 digits',
+							example: '11232763'
+						}),
 						{
 							status: 400,
 							headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -182,8 +188,8 @@ export default {
 					);
 				}
 
-				const stmt = env.hostel.prepare('SELECT id, full_name, roll_no, room_no, hostel_no, profile_pic_url, email, mobile_no, created_at FROM students WHERE id = ?');
-				const result = await stmt.bind(studentId).first();
+				const stmt = env.hostel.prepare('SELECT roll_no, full_name, room_no, hostel_no, profile_pic_url, email, mobile_no, created_at FROM students WHERE roll_no = ?');
+				const result = await stmt.bind(rollNo).first();
 
 				if (!result) {
 					return new Response(
@@ -211,6 +217,109 @@ export default {
 					JSON.stringify({ error: 'Internal server error' }),
 					{
 						status: 500,
+						headers: { 'Content-Type': 'application/json', ...corsHeaders },
+					}
+				);
+			}
+		}
+
+		// Handle update student profile endpoint by roll number
+		if (request.method === 'PUT' && url.pathname.startsWith('/api/student/')) {
+			try {
+				const rollNo = url.pathname.split('/').pop();
+
+				if (!rollNo || rollNo.length !== 8 || isNaN(rollNo)) {
+					return new Response(
+						JSON.stringify({ 
+							error: 'Invalid roll number format. Must be exactly 8 digits',
+							example: '11232763'
+						}),
+						{
+							status: 400,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				}
+
+				// Check if student exists
+				const checkStmt = env.hostel.prepare('SELECT roll_no FROM students WHERE roll_no = ?');
+				const studentExists = await checkStmt.bind(rollNo).first();
+
+				if (!studentExists) {
+					return new Response(
+						JSON.stringify({ error: 'Student not found' }),
+						{
+							status: 404,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				}
+
+				const body = await request.json();
+				const { full_name, room_no, hostel_no, profile_pic_url, email, mobile_no } = body;
+
+				// Validate required fields
+				if (!full_name || !room_no || !hostel_no || !email || !mobile_no) {
+					return new Response(
+						JSON.stringify({ 
+							error: 'Missing required fields',
+							required: ['full_name', 'room_no', 'hostel_no', 'email', 'mobile_no']
+						}),
+						{
+							status: 400,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				}
+
+				// Update student record
+				const stmt = env.hostel.prepare(`
+					UPDATE students 
+					SET full_name = ?, room_no = ?, hostel_no = ?, profile_pic_url = ?, email = ?, mobile_no = ?
+					WHERE roll_no = ?
+				`);
+
+				const result = await stmt
+					.bind(full_name, room_no, hostel_no, profile_pic_url || null, email, mobile_no, rollNo)
+					.run();
+
+				if (result.success) {
+					return new Response(
+						JSON.stringify({ 
+							success: true, 
+							message: 'Student profile updated successfully',
+							roll_no: rollNo
+						}),
+						{
+							status: 200,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				} else {
+					throw new Error('Failed to update student record');
+				}
+			} catch (error) {
+				console.error('Update student error:', error);
+				
+				// Handle specific database errors
+				let errorMessage = 'Internal server error';
+				let statusCode = 500;
+
+				if (error.message.includes('UNIQUE constraint failed')) {
+					if (error.message.includes('email')) {
+						errorMessage = 'Email already exists';
+					} else if (error.message.includes('mobile_no')) {
+						errorMessage = 'Mobile number already exists';
+					} else {
+						errorMessage = 'Duplicate entry found';
+					}
+					statusCode = 409;
+				}
+
+				return new Response(
+					JSON.stringify({ error: errorMessage }),
+					{
+						status: statusCode,
 						headers: { 'Content-Type': 'application/json', ...corsHeaders },
 					}
 				);
