@@ -39,46 +39,18 @@ export default {
 					);
 				}
 
-				// Validate roll_no format (exactly 8 digits)
-				if (!/^\d{8}$/.test(roll_no)) {
-					return new Response(
-						JSON.stringify({ 
-							error: 'Roll number must be exactly 8 digits',
-							example: '11232763'
-						}),
-						{
-							status: 400,
-							headers: { 'Content-Type': 'application/json', ...corsHeaders },
-						}
-					);
-				}
-
-				// Validate mobile_no format (exactly 10 digits)
-				if (!/^\d{10}$/.test(mobile_no)) {
-					return new Response(
-						JSON.stringify({ 
-							error: 'Mobile number must be exactly 10 digits',
-							example: '9876543210'
-						}),
-						{
-							status: 400,
-							headers: { 'Content-Type': 'application/json', ...corsHeaders },
-						}
-					);
-				}
-
 				// Hash the password
 				const password_hash = await bcrypt.hash(password, 10);
 
 				// Insert into database
 				const stmt = env.hostel.prepare(`
 					INSERT INTO students 
-						(roll_no, full_name, room_no, hostel_no, profile_pic_url, password_hash, email, mobile_no)
+						(full_name, roll_no, room_no, hostel_no, profile_pic_url, password_hash, email, mobile_no)
 					VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				`);
 
 				const result = await stmt
-					.bind(roll_no, full_name, room_no, hostel_no, profile_pic_url || null, password_hash, email, mobile_no)
+					.bind(full_name, roll_no, room_no, hostel_no, profile_pic_url || null, password_hash, email, mobile_no)
 					.run();
 
 				if (result.success) {
@@ -86,7 +58,7 @@ export default {
 						JSON.stringify({ 
 							success: true, 
 							message: 'Student registered successfully',
-							roll_no: roll_no
+							student_id: result.meta.last_row_id
 						}),
 						{
 							status: 201,
@@ -103,7 +75,7 @@ export default {
 				let errorMessage = 'Internal server error';
 				let statusCode = 500;
 
-				if (error.message.includes('UNIQUE constraint failed') || error.message.includes('PRIMARY KEY constraint failed')) {
+				if (error.message.includes('UNIQUE constraint failed')) {
 					if (error.message.includes('roll_no')) {
 						errorMessage = 'Roll number already exists';
 					} else if (error.message.includes('email')) {
@@ -130,14 +102,11 @@ export default {
 		if (request.method === 'POST' && url.pathname === '/api/login') {
 			try {
 				const body = await request.json();
-				const { username, password } = body;
+				const { email, password } = body;
 
-				if (!username || !password) {
+				if (!email || !password) {
 					return new Response(
-						JSON.stringify({ 
-							error: 'Username and password are required',
-							note: 'Username can be roll number, email, or mobile number'
-						}),
+						JSON.stringify({ error: 'Email and password are required' }),
 						{
 							status: 400,
 							headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -145,9 +114,9 @@ export default {
 					);
 				}
 
-				// Find user by roll_no, email, or mobile_no
-				const stmt = env.hostel.prepare('SELECT * FROM students WHERE roll_no = ? OR email = ? OR mobile_no = ?');
-				const result = await stmt.bind(username, username, username).first();
+				// Find user by email
+				const stmt = env.hostel.prepare('SELECT * FROM students WHERE email = ?');
+				const result = await stmt.bind(email).first();
 
 				if (!result) {
 					return new Response(
@@ -201,15 +170,11 @@ export default {
 		// Handle get student profile endpoint
 		if (request.method === 'GET' && url.pathname.startsWith('/api/student/')) {
 			try {
-				const roll_no = url.pathname.split('/').pop();
+				const studentId = url.pathname.split('/').pop();
 
-				// Validate roll_no format (exactly 8 digits)
-				if (!roll_no || !/^\d{8}$/.test(roll_no)) {
+				if (!studentId || isNaN(studentId)) {
 					return new Response(
-						JSON.stringify({ 
-							error: 'Invalid roll number format. Must be exactly 8 digits',
-							example: '11232763'
-						}),
+						JSON.stringify({ error: 'Invalid student ID' }),
 						{
 							status: 400,
 							headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -217,8 +182,8 @@ export default {
 					);
 				}
 
-				const stmt = env.hostel.prepare('SELECT roll_no, full_name, room_no, hostel_no, profile_pic_url, email, mobile_no, created_at FROM students WHERE roll_no = ?');
-				const result = await stmt.bind(roll_no).first();
+				const stmt = env.hostel.prepare('SELECT id, full_name, roll_no, room_no, hostel_no, profile_pic_url, email, mobile_no, created_at FROM students WHERE id = ?');
+				const result = await stmt.bind(studentId).first();
 
 				if (!result) {
 					return new Response(
