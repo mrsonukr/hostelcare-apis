@@ -42,16 +42,31 @@ export default {
 				// Check if roll number exists in KV store with "student:" prefix
 				const kvKey = `student:${roll_no}`;
 				console.log('Attempting to fetch KV key:', kvKey);
+				console.log('Environment:', env);
+				console.log('KV Namespace binding:', env.student_data);
 				const kvStudentData = await env.student_data.get(kvKey);
-				console.log('KV Data:', kvStudentData);
+				console.log('KV Data found:', kvStudentData ? 'Yes' : 'No');
+				console.log('KV Data content:', kvStudentData);
 				
 				if (!kvStudentData) {
+					// Try to list some keys to debug
+					try {
+						const listResult = await env.student_data.list({ prefix: 'student:', limit: 5 });
+						console.log('Available keys sample:', listResult.keys.map(k => k.name));
+					} catch (listError) {
+						console.error('Error listing KV keys:', listError);
+					}
+					
 					console.error(`Roll number ${roll_no} not found in student_data namespace at key ${kvKey}`);
 					return new Response(
 						JSON.stringify({ 
 							error: 'Roll number not found in student database',
 							message: 'Please contact administration to verify your roll number',
-							roll_no: roll_no
+							roll_no: roll_no,
+							debug: {
+								kvKey: kvKey,
+								hasKVBinding: !!env.student_data
+							}
 						}),
 						{
 							status: 404,

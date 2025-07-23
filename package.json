@@ -5,7 +5,8 @@
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
-		"start": "wrangler dev"
+		"start": "wrangler dev",
+		"populate-kv": "node scripts/populate-kv.js"
 	},
 	"devDependencies": {
 		"wrangler": "^4.25.1"

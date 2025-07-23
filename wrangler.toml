@@ -1,5 +1,4 @@
 name = "hostelapis"
-account_id = "2bbd8263b5406a23004e2b361570fbc4"  # ✅ Add this
 main = "src/worker.js"
 workers_dev = true
 compatibility_date = "2025-07-22"

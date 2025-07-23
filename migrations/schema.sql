@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS students;
+
 CREATE TABLE students (
     roll_no TEXT PRIMARY KEY,
     full_name TEXT NOT NULL,
@@ -10,4 +12,4 @@ CREATE TABLE students (
     profile_pic_url TEXT,
     email TEXT UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
+);
