@@ -23,14 +23,14 @@ export default {
 		if (request.method === 'POST' && url.pathname === '/api/signup') {
 			try {
 				const body = await request.json();
-				const { full_name, roll_no, room_no, hostel_no, profile_pic_url, password, email, mobile_no } = body;
+				const { roll_no, mobile_no, password } = body;
 
 				// Validate required fields
-				if (!full_name || !roll_no || !room_no || !hostel_no || !password || !email || !mobile_no) {
+				if (!roll_no || !mobile_no || !password) {
 					return new Response(
 						JSON.stringify({ 
 							error: 'Missing required fields',
-							required: ['full_name', 'roll_no', 'room_no', 'hostel_no', 'password', 'email', 'mobile_no']
+							required: ['roll_no', 'mobile_no', 'password']
 						}),
 						{
 							status: 400,
@@ -45,12 +45,12 @@ export default {
 				// Insert into database
 				const stmt = env.hostel.prepare(`
 					INSERT INTO students 
-						(full_name, roll_no, room_no, hostel_no, profile_pic_url, password_hash, email, mobile_no)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+						(roll_no, mobile_no, password_hash, email_verified)
+					VALUES (?, ?, ?, ?)
 				`);
 
 				const result = await stmt
-					.bind(full_name, roll_no, room_no, hostel_no, profile_pic_url || null, password_hash, email, mobile_no)
+					.bind(roll_no, mobile_no, password_hash, false)
 					.run();
 
 				if (result.success) {
@@ -78,8 +78,6 @@ export default {
 				if (error.message.includes('UNIQUE constraint failed')) {
 					if (error.message.includes('roll_no')) {
 						errorMessage = 'Roll number already exists';
-					} else if (error.message.includes('email')) {
-						errorMessage = 'Email already exists';
 					} else if (error.message.includes('mobile_no')) {
 						errorMessage = 'Mobile number already exists';
 					} else {
@@ -108,7 +106,7 @@ export default {
 					return new Response(
 						JSON.stringify({ 
 							error: 'Username and password are required',
-							note: 'Username can be roll number, email, or mobile number'
+							note: 'Username can be roll number or mobile number'
 						}),
 						{
 							status: 400,
@@ -117,9 +115,9 @@ export default {
 					);
 				}
 
-				// Find user by roll_no, email, or mobile_no
-				const stmt = env.hostel.prepare('SELECT * FROM students WHERE roll_no = ? OR email = ? OR mobile_no = ?');
-				const result = await stmt.bind(username, username, username).first();
+				// Find user by roll_no or mobile_no
+				const stmt = env.hostel.prepare('SELECT * FROM students WHERE roll_no = ? OR mobile_no = ?');
+				const result = await stmt.bind(username, username).first();
 
 				if (!result) {
 					return new Response(
@@ -188,7 +186,7 @@ export default {
 					);
 				}
 
-				const stmt = env.hostel.prepare('SELECT roll_no, full_name, room_no, hostel_no, profile_pic_url, email, mobile_no, created_at FROM students WHERE roll_no = ?');
+				const stmt = env.hostel.prepare('SELECT roll_no, full_name, room_no, hostel_no, profile_pic_url, email, mobile_no, email_verified, created_at FROM students WHERE roll_no = ?');
 				const result = await stmt.bind(rollNo).first();
 
 				if (!result) {
@@ -259,11 +257,11 @@ export default {
 				const { full_name, room_no, hostel_no, profile_pic_url, email, mobile_no } = body;
 
 				// Validate required fields
-				if (!full_name || !room_no || !hostel_no || !email || !mobile_no) {
+				if (!mobile_no) {
 					return new Response(
 						JSON.stringify({ 
-							error: 'Missing required fields',
-							required: ['full_name', 'room_no', 'hostel_no', 'email', 'mobile_no']
+							error: 'Mobile number is required',
+							required: ['mobile_no']
 						}),
 						{
 							status: 400,
@@ -280,7 +278,7 @@ export default {
 				`);
 
 				const result = await stmt
-					.bind(full_name, room_no, hostel_no, profile_pic_url || null, email, mobile_no, rollNo)
+					.bind(full_name || null, room_no || null, hostel_no || null, profile_pic_url || null, email || null, mobile_no, rollNo)
 					.run();
 
 				if (result.success) {
