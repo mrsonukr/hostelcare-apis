@@ -23,14 +23,55 @@ export default {
 		if (request.method === 'POST' && url.pathname === '/api/signup') {
 			try {
 				const body = await request.json();
-				const { roll_no, mobile_no, password } = body;
+				const { roll_no, mobile_no, password, email } = body;
 
 				// Validate required fields
-				if (!roll_no || !mobile_no || !password) {
+				if (!roll_no || !mobile_no || !password || !email) {
 					return new Response(
 						JSON.stringify({ 
 							error: 'Missing required fields',
-							required: ['roll_no', 'mobile_no', 'password']
+							required: ['roll_no', 'mobile_no', 'password', 'email']
+						}),
+						{
+							status: 400,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				}
+
+				// Check if roll number exists in KV store with "student:" prefix
+				const kvKey = `student:${roll_no}`;
+				console.log('Attempting to fetch KV key:', kvKey);
+				const kvStudentData = await env.student_data.get(kvKey);
+				console.log('KV Data:', kvStudentData);
+				
+				if (!kvStudentData) {
+					console.error(`Roll number ${roll_no} not found in student_data namespace at key ${kvKey}`);
+					return new Response(
+						JSON.stringify({ 
+							error: 'Roll number not found in student database',
+							message: 'Please contact administration to verify your roll number',
+							roll_no: roll_no
+						}),
+						{
+							status: 404,
+							headers: { 'Content-Type': 'application/json', ...corsHeaders },
+						}
+					);
+				}
+
+				// Parse KV data and get student details
+				const kvData = JSON.parse(kvStudentData);
+				const registeredName = kvData.name || kvData.full_name;
+				const registeredGender = kvData.gender;
+
+				// Validate that KV data contains required fields
+				if (!registeredName || !registeredGender) {
+					return new Response(
+						JSON.stringify({ 
+							error: 'Invalid student data in database',
+							message: 'Student record missing name or gender',
+							roll_no: roll_no
 						}),
 						{
 							status: 400,
@@ -45,12 +86,12 @@ export default {
 				// Insert into database
 				const stmt = env.hostel.prepare(`
 					INSERT INTO students 
-						(roll_no, mobile_no, password_hash, email_verified)
-					VALUES (?, ?, ?, ?)
+						(roll_no, full_name, mobile_no, password_hash, gender, email_verified, email)
+					VALUES (?, ?, ?, ?, ?, ?, ?)
 				`);
 
 				const result = await stmt
-					.bind(roll_no, mobile_no, password_hash, false)
+					.bind(roll_no, registeredName, mobile_no, password_hash, registeredGender, false, email)
 					.run();
 
 				if (result.success) {
@@ -58,7 +99,10 @@ export default {
 						JSON.stringify({ 
 							success: true, 
 							message: 'Student registered successfully',
-							roll_no: roll_no
+							roll_no: roll_no,
+							full_name: registeredName,
+							gender: registeredGender,
+							email: email
 						}),
 						{
 							status: 201,
@@ -80,10 +124,15 @@ export default {
 						errorMessage = 'Roll number already exists';
 					} else if (error.message.includes('mobile_no')) {
 						errorMessage = 'Mobile number already exists';
+					} else if (error.message.includes('email')) {
+						errorMessage = 'Email already exists';
 					} else {
 						errorMessage = 'Duplicate entry found';
 					}
 					statusCode = 409;
+				} else if (error.message.includes('D1_ERROR')) {
+					errorMessage = `Database error: ${error.message}`;
+					statusCode = 500;
 				}
 
 				return new Response(
@@ -186,7 +235,7 @@ export default {
 					);
 				}
 
-				const stmt = env.hostel.prepare('SELECT roll_no, full_name, room_no, hostel_no, profile_pic_url, email, mobile_no, email_verified, created_at FROM students WHERE roll_no = ?');
+				const stmt = env.hostel.prepare('SELECT roll_no, full_name, gender, room_no, hostel_no, profile_pic_url, email, mobile_no, email_verified, created_at FROM students WHERE roll_no = ?');
 				const result = await stmt.bind(rollNo).first();
 
 				if (!result) {
@@ -254,7 +303,7 @@ export default {
 				}
 
 				const body = await request.json();
-				const { full_name, room_no, hostel_no, profile_pic_url, email, mobile_no } = body;
+				const { full_name, gender, room_no, hostel_no, profile_pic_url, email, mobile_no } = body;
 
 				// Validate required fields
 				if (!mobile_no) {
@@ -273,12 +322,12 @@ export default {
 				// Update student record
 				const stmt = env.hostel.prepare(`
 					UPDATE students 
-					SET full_name = ?, room_no = ?, hostel_no = ?, profile_pic_url = ?, email = ?, mobile_no = ?
+					SET full_name = ?, gender = ?, room_no = ?, hostel_no = ?, profile_pic_url = ?, email = ?, mobile_no = ?
 					WHERE roll_no = ?
 				`);
 
 				const result = await stmt
-					.bind(full_name || null, room_no || null, hostel_no || null, profile_pic_url || null, email || null, mobile_no, rollNo)
+					.bind(full_name || null, gender || null, room_no || null, hostel_no || null, profile_pic_url || null, email || null, mobile_no, rollNo)
 					.run();
 
 				if (result.success) {
@@ -301,7 +350,7 @@ export default {
 				
 				// Handle specific database errors
 				let errorMessage = 'Internal server error';
-				let statusCode = 500;
+			 let statusCode = 500;
 
 				if (error.message.includes('UNIQUE constraint failed')) {
 					if (error.message.includes('email')) {
@@ -312,6 +361,9 @@ export default {
 						errorMessage = 'Duplicate entry found';
 					}
 					statusCode = 409;
+				} else if (error.message.includes('D1_ERROR')) {
+					errorMessage = `Database error: ${error.message}`;
+					statusCode = 500;
 				}
 
 				return new Response(

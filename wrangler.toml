@@ -1,4 +1,5 @@
 name = "hostelapis"
+account_id = "2bbd8263b5406a23004e2b361570fbc4"  # ✅ Add this
 main = "src/worker.js"
 workers_dev = true
 compatibility_date = "2025-07-22"
@@ -10,3 +11,7 @@ enabled = true
 binding = "hostel"
 database_name = "hostel"
 database_id = "af7d44b4-8bb2-42ed-b462-e4c8604f51b2"
+
+[[kv_namespaces]]
+binding = "student_data"
+id = "5f5d627167f64f2abbbc4904a942f343"
