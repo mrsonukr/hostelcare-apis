@@ -41,12 +41,7 @@ export default {
 
 				// Check if roll number exists in KV store with "student:" prefix
 				const kvKey = `student:${roll_no}`;
-				console.log('Attempting to fetch KV key:', kvKey);
-				console.log('Environment:', env);
-				console.log('KV Namespace binding:', env.student_data);
 				const kvStudentData = await env.student_data.get(kvKey);
-				console.log('KV Data found:', kvStudentData ? 'Yes' : 'No');
-				console.log('KV Data content:', kvStudentData);
 				
 				if (!kvStudentData) {
 					// Try to list some keys to debug
@@ -318,14 +313,14 @@ export default {
 				}
 
 				const body = await request.json();
-				const { full_name, gender, room_no, hostel_no, profile_pic_url, email, mobile_no } = body;
+				const allowedFields = ['full_name', 'gender', 'room_no', 'hostel_no', 'profile_pic_url', 'email', 'mobile_no', 'email_verified'];
+				const updateFields = Object.keys(body).filter(key => allowedFields.includes(key));
 
-				// Validate required fields
-				if (!mobile_no) {
+				if (updateFields.length === 0) {
 					return new Response(
 						JSON.stringify({ 
-							error: 'Mobile number is required',
-							required: ['mobile_no']
+							error: 'No valid fields provided for update',
+							allowed: allowedFields
 						}),
 						{
 							status: 400,
@@ -334,23 +329,29 @@ export default {
 					);
 				}
 
-				// Update student record
-				const stmt = env.hostel.prepare(`
-					UPDATE students 
-					SET full_name = ?, gender = ?, room_no = ?, hostel_no = ?, profile_pic_url = ?, email = ?, mobile_no = ?
-					WHERE roll_no = ?
-				`);
+				// Build dynamic SQL query
+				const setClause = updateFields.map(field => `${field} = ?`).join(', ');
+				const query = `UPDATE students SET ${setClause} WHERE roll_no = ?`;
+				const stmt = env.hostel.prepare(query);
 
-				const result = await stmt
-					.bind(full_name || null, gender || null, room_no || null, hostel_no || null, profile_pic_url || null, email || null, mobile_no, rollNo)
-					.run();
+				// Bind values in the order of updateFields plus rollNo
+				const values = updateFields.map(field => body[field] === undefined ? null : body[field]);
+				values.push(rollNo);
+
+				const result = await stmt.bind(...values).run();
 
 				if (result.success) {
+					// Fetch updated record
+					const updatedStmt = env.hostel.prepare('SELECT roll_no, full_name, gender, room_no, hostel_no, profile_pic_url, email, mobile_no, email_verified, created_at FROM students WHERE roll_no = ?');
+					const updatedStudent = await updatedStmt.bind(rollNo).first();
+
 					return new Response(
 						JSON.stringify({ 
 							success: true, 
 							message: 'Student profile updated successfully',
-							roll_no: rollNo
+							roll_no: rollNo,
+							updated_fields: updateFields,
+							student: updatedStudent
 						}),
 						{
 							status: 200,
@@ -365,7 +366,7 @@ export default {
 				
 				// Handle specific database errors
 				let errorMessage = 'Internal server error';
-			 let statusCode = 500;
+				let statusCode = 500;
 
 				if (error.message.includes('UNIQUE constraint failed')) {
 					if (error.message.includes('email')) {
